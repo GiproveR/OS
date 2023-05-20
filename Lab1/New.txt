@@ -1,0 +1,68 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+#define NUM_THREADS 4//количество потоков
+#define ARRAY_SIZE 50//размер массива с числами фибоначчи (больше 93 лучше не ставить :) )
+
+long long shared_array[ARRAY_SIZE];//массив с числами фибоначчи
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mutex;
+int completed[] = {-1,-1,-1,-1};//отслеживание завершённости четырёх потоков
+
+void *thread_function(void *arg) {
+    int thread_id = *(int*)arg;//получение id потока
+    int start_index = thread_id * (ARRAY_SIZE / NUM_THREADS) +2;//стартовый индекс (так как первые два числа определены, прибавляем +2)
+    int end_index = start_index + (ARRAY_SIZE / NUM_THREADS);//конечный индекс
+    //printf("%d %d \n",start_index,end_index);
+    
+    for (int i = start_index; i < end_index; i++) {
+        //printf("%d",thread_id);
+        pthread_mutex_lock(&mutex);
+        if (thread_id!=0) {//условия для ожидания, если поток начал выполняться раньше предшественников (позволяет избежаьб)
+            while (completed[thread_id-1]!=0) {
+                pthread_cond_wait(&cond, &mutex);
+            }
+        }
+        pthread_cond_signal(&cond);//синхронизация
+        shared_array[i] = shared_array[i-1] + shared_array[i-2];//считает числа фибоначчи
+        pthread_mutex_unlock(&mutex);
+    }
+    completed[thread_id]=0;//цикл завершён
+    pthread_exit(NULL);
+}
+
+int main() {
+    pthread_t threads[NUM_THREADS];
+    int thread_ids[NUM_THREADS];
+
+    shared_array[0] = 0;//задаём первые числа в массиве
+    shared_array[1] = 1;
+    //инициализация mutex
+    pthread_mutex_init(&mutex, NULL);
+    //создание потоков
+    for (int i = 0; i < NUM_THREADS; i++) {
+        thread_ids[i] = i;
+        pthread_create(&threads[i], NULL, thread_function, &thread_ids[i]);
+    }
+    
+    
+    //ждём завершённости всех циклов
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    
+    
+    // вывод всего ряда фибоначчи
+    for (int i = 0; i < ARRAY_SIZE; i++) {
+        printf("%lld ", shared_array[i]);
+    }
+    printf("\n");
+    printf("Ответ: Число фибоначчи с номером %d == %lld ", ARRAY_SIZE-1,shared_array[ARRAY_SIZE-1]);//выводит последнее число (ответ)
+    
+    //закрывает mutex
+    pthread_mutex_destroy(&mutex);
+    
+    return 0;
+}
+
